@@ -56,8 +56,28 @@ export default function ProductsPage() {
   }, [products, searchQuery, selectedCategory])
 
   const loadProducts = async () => {
-    const inventory = await db.getInventory()
-    setProducts(inventory)
+    try {
+      const response = await fetch('/api/products')
+      if (!response.ok) throw new Error('Failed to fetch products')
+      const data = await response.json()
+      // Map API response to InventoryItem format
+      const inventory = data.map((product: any) => ({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        cost: 0,
+        category: product.category,
+        description: product.description || '',
+        stock: 0,
+        lowStockThreshold: 5,
+        supplier: '',
+        image: product.image_url || product.image,
+        lastRestocked: new Date(),
+      }))
+      setProducts(inventory)
+    } catch (error) {
+      console.error('[v0] Error loading products:', error)
+    }
   }
 
   const filterProducts = () => {
@@ -82,22 +102,38 @@ export default function ProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const productData: InventoryItem = {
-      id: editingProduct?.id || Date.now(),
-      ...formData,
-      lastRestocked: new Date(),
-    }
+    try {
+      const payload = {
+        name: formData.name,
+        price: formData.price,
+        description: formData.description,
+        image_url: formData.image,
+        category_id: formData.category, // Send category as category_id
+      }
 
-    let updatedProducts
-    if (editingProduct) {
-      updatedProducts = products.map((p) => (p.id === editingProduct.id ? productData : p))
-    } else {
-      updatedProducts = [...products, productData]
-    }
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
 
-    await db.saveInventory(updatedProducts)
-    setProducts(updatedProducts)
-    resetForm()
+      if (!response.ok) {
+        const error = await response.json()
+        alert(`Error: ${error.error || 'Failed to create product'}`)
+        return
+      }
+
+      const newProduct = await response.json()
+      console.log('[v0] Product created:', newProduct)
+      
+      // Refresh products list
+      await loadProducts()
+      resetForm()
+      alert('Product created successfully!')
+    } catch (error) {
+      console.error('[v0] Error submitting product:', error)
+      alert('Error creating product')
+    }
   }
 
   const handleEdit = (product: InventoryItem) => {
@@ -118,9 +154,17 @@ export default function ProductsPage() {
 
   const handleDelete = async (productId: number) => {
     if (confirm("Are you sure you want to delete this product?")) {
-      const updatedProducts = products.filter((p) => p.id !== productId)
-      await db.saveInventory(updatedProducts)
-      setProducts(updatedProducts)
+      try {
+        const response = await fetch(`/api/products/${productId}`, {
+          method: 'DELETE',
+        })
+        if (!response.ok) throw new Error('Failed to delete product')
+        await loadProducts()
+        alert('Product deleted successfully!')
+      } catch (error) {
+        console.error('[v0] Error deleting product:', error)
+        alert('Error deleting product')
+      }
     }
   }
 
