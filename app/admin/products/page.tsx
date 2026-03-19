@@ -73,12 +73,11 @@ export default function ProductsPage() {
 
       console.log("Products API:", data)
 
-      // ALWAYS ensure it's an array
       if (Array.isArray(data)) {
         setProducts(data)
       } else {
         console.error("API did not return array:", data)
-        setProducts([]) // fallback
+        setProducts([])
       }
     } catch (error) {
       console.error("Error loading products:", error)
@@ -90,11 +89,10 @@ export default function ProductsPage() {
     let filtered = products
 
     if (searchQuery) {
-      filtered = filtered.filter(
-        (product) =>
-          product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          product.supplier.toLowerCase().includes(searchQuery.toLowerCase()),
+      filtered = filtered.filter((product) =>
+        product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (product.supplier || "").toLowerCase().includes(searchQuery.toLowerCase())
       )
     }
 
@@ -350,39 +348,31 @@ export default function ProductsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredProducts.map((product) => (
           <Card key={product.id} className="overflow-hidden">
-            <div className="aspect-square relative">
-              <img
-                src={product.image || "/placeholder.svg"}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute top-2 right-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="secondary" size="icon" className="h-8 w-8">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => handleEdit(product)}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleDelete(product.id)} className="text-red-600">
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
+          <div className="aspect-square relative bg-gray-200">
+            <img
+              src={product.image || "/placeholder.svg"}
+              alt={product.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"
+              }}
+            />
+          </div>
             <CardContent className="p-4">
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <h3 className="font-medium line-clamp-1">{product.name}</h3>
-                  <Badge variant={product.stock <= product.lowStockThreshold ? "destructive" : "secondary"}>
-                    {product.stock}
-                  </Badge>
+                    {product.stock !== undefined && (
+                      <Badge
+                        variant={
+                          product.stock <= (product.lowStockThreshold ?? 5)
+                            ? "destructive"
+                            : "secondary"
+                        }
+                      >
+                        {product.stock}
+                      </Badge>
+                    )}
                 </div>
                 <p className="text-sm text-muted-foreground capitalize">{product.category}</p>
                 <div className="flex items-center justify-between">
@@ -390,12 +380,12 @@ export default function ProductsPage() {
                     <DollarSign className="h-3 w-3 text-green-600" />
                     <span className="font-medium text-green-600">${product.price.toFixed(2)}</span>
                   </div>
-                  {product.cost > 0 && (
-                    <div className="text-xs text-muted-foreground">
-                      Margin: {(((product.price - product.cost) / product.price) * 100).toFixed(0)}%
-                    </div>
-                  )}
-                </div>
+                    {(product.cost ?? 0) > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Margin: {(((product.price - (product.cost ?? 0)) / product.price) * 100).toFixed(0)}%
+                      </div>
+                    )}
+                  </div>
                 <p className="text-xs text-muted-foreground">{product.supplier}</p>
               </div>
             </CardContent>

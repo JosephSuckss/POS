@@ -65,11 +65,30 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
               className="overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer group"
               onClick={() => addToCart(product)}
             >
-              <div className="relative aspect-square">
+              <div className="relative aspect-square bg-gray-200">
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 z-10">
                   <PlusCircle className="h-10 w-10 text-white" />
                 </div>
-                <Image src={product.image || "/placeholder.svg"} alt={product.name} fill className="object-cover" />
+
+                {product.image ? (
+                  <Image
+                    src={product.image}
+                    alt={product.name}
+                    fill
+                    className="object-cover"
+                    onError={(e) => {
+                      console.log('[v0] Image failed:', product.image)
+                      ;(e.target as HTMLImageElement).src = "/placeholder.svg"
+                    }}
+                  />
+                ) : (
+                  <Image
+                    src="/placeholder.svg"
+                    alt={product.name}
+                    fill
+                    className="object-cover"
+                  />
+                )}
               </div>
               <CardContent className="p-3">
                 <div>
