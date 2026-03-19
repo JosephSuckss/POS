@@ -25,17 +25,6 @@ interface ProductFormData {
   supplier: string
   image: string
 }
-interface InventoryItem {
-  id: number
-  name: string
-  price: number
-  cost: number
-  category: string
-  stock: number
-  lowStockThreshold: number
-  supplier: string
-  image: string
-}
 
 const categories = ["food", "drinks", "desserts", "snacks", "beverages"]
 
@@ -68,20 +57,26 @@ export default function ProductsPage() {
 
   const loadProducts = async () => {
     try {
-      const res = await fetch("/api/products")
-      const data = await res.json()
-
-      console.log("Products API:", data)
-
-      if (Array.isArray(data)) {
-        setProducts(data)
-      } else {
-        console.error("API did not return array:", data)
-        setProducts([])
-      }
+      const response = await fetch('/api/products')
+      if (!response.ok) throw new Error('Failed to fetch products')
+      const data = await response.json()
+      // Map API response to InventoryItem format
+      const inventory = data.map((product: any) => ({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        cost: 0,
+        category: product.category,
+        description: product.description || '',
+        stock: 0,
+        lowStockThreshold: 5,
+        supplier: '',
+        image: product.image_url || product.image,
+        lastRestocked: new Date(),
+      }))
+      setProducts(inventory)
     } catch (error) {
-      console.error("Error loading products:", error)
-      setProducts([])
+      console.error('[v0] Error loading products:', error)
     }
   }
 
@@ -89,10 +84,11 @@ export default function ProductsPage() {
     let filtered = products
 
     if (searchQuery) {
-      filtered = filtered.filter((product) =>
-        product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.category?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (product.supplier || "").toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (product) =>
+          product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          product.supplier.toLowerCase().includes(searchQuery.toLowerCase()),
       )
     }
 
@@ -106,30 +102,38 @@ export default function ProductsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const productData: InventoryItem = {
-      id: editingProduct?.id || Date.now(),
-      ...formData,
-      lastRestocked: new Date(),
+    try {
+      const payload = {
+        name: formData.name,
+        price: formData.price,
+        description: formData.description,
+        image_url: formData.image,
+        category_id: formData.category, // Send category as category_id
+      }
+
+      const response = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        alert(`Error: ${error.error || 'Failed to create product'}`)
+        return
+      }
+
+      const newProduct = await response.json()
+      console.log('[v0] Product created:', newProduct)
+      
+      // Refresh products list
+      await loadProducts()
+      resetForm()
+      alert('Product created successfully!')
+    } catch (error) {
+      console.error('[v0] Error submitting product:', error)
+      alert('Error creating product')
     }
-
-    let updatedProducts
-    if (editingProduct) {
-      updatedProducts = products.map((p) => (p.id === editingProduct.id ? productData : p))
-    } else {
-      updatedProducts = [...products, productData]
-    }
-
-    await fetch("/api/products", {
-      method: editingProduct ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editingProduct?.id,
-        ...formData,
-      }),
-    })
-
-    await loadProducts()
-    resetForm()
   }
 
   const handleEdit = (product: InventoryItem) => {
@@ -150,13 +154,17 @@ export default function ProductsPage() {
 
   const handleDelete = async (productId: number) => {
     if (confirm("Are you sure you want to delete this product?")) {
-      const updatedProducts = products.filter((p) => p.id !== productId)
-      await fetch(`/api/products?id=${productId}`, {
-        method: "DELETE",
-      })
-
-      await loadProducts()
-      setProducts(updatedProducts)
+      try {
+        const response = await fetch(`/api/products/${productId}`, {
+          method: 'DELETE',
+        })
+        if (!response.ok) throw new Error('Failed to delete product')
+        await loadProducts()
+        alert('Product deleted successfully!')
+      } catch (error) {
+        console.error('[v0] Error deleting product:', error)
+        alert('Error deleting product')
+      }
     }
   }
 
@@ -348,31 +356,39 @@ export default function ProductsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filteredProducts.map((product) => (
           <Card key={product.id} className="overflow-hidden">
-          <div className="aspect-square relative bg-gray-200">
-            <img
-              src={product.image || "/placeholder.svg"}
-              alt={product.name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = "/placeholder.svg"
-              }}
-            />
-          </div>
+            <div className="aspect-square relative">
+              <img
+                src={product.image || "/placeholder.svg"}
+                alt={product.name}
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute top-2 right-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="secondary" size="icon" className="h-8 w-8">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => handleEdit(product)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleDelete(product.id)} className="text-red-600">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
             <CardContent className="p-4">
               <div className="space-y-2">
                 <div className="flex items-start justify-between">
                   <h3 className="font-medium line-clamp-1">{product.name}</h3>
-                    {product.stock !== undefined && (
-                      <Badge
-                        variant={
-                          product.stock <= (product.lowStockThreshold ?? 5)
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {product.stock}
-                      </Badge>
-                    )}
+                  <Badge variant={product.stock <= product.lowStockThreshold ? "destructive" : "secondary"}>
+                    {product.stock}
+                  </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground capitalize">{product.category}</p>
                 <div className="flex items-center justify-between">
@@ -380,12 +396,12 @@ export default function ProductsPage() {
                     <DollarSign className="h-3 w-3 text-green-600" />
                     <span className="font-medium text-green-600">${product.price.toFixed(2)}</span>
                   </div>
-                    {(product.cost ?? 0) > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        Margin: {(((product.price - (product.cost ?? 0)) / product.price) * 100).toFixed(0)}%
-                      </div>
-                    )}
-                  </div>
+                  {product.cost > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      Margin: {(((product.price - product.cost) / product.price) * 100).toFixed(0)}%
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{product.supplier}</p>
               </div>
             </CardContent>
