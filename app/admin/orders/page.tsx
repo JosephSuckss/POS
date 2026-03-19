@@ -15,6 +15,7 @@ import { db, type Transaction } from "../../services/database"
 interface OrderDetails extends Transaction {
   customerName?: string
   customerEmail?: string
+  status?: string
 }
 
 const orderStatuses = [
@@ -42,28 +43,28 @@ export default function OrdersPage() {
 
 const loadOrders = async () => {
   try {
-    const response = await fetch('/api/transactions')
+    // Fetch from orders table instead of transactions
+    const response = await fetch('/api/orders')
     const data = await response.json()
 
-    console.log("API response:", data) // 👈 DEBUG
+    console.log('[v0] Orders API response:', data)
 
-    // Handle different possible shapes
-    const transactionsArray = Array.isArray(data)
-      ? data
-      : data.transactions || data.data || []
+    const ordersArray = Array.isArray(data) ? data : data.orders || data.data || []
 
-    const ordersWithCustomerInfo: OrderDetails[] = transactionsArray.map((transaction: any) => ({
-      ...transaction,
-      id: transaction.id,
-      receiptNumber: transaction.id,
-      total: transaction.total_amount || 0,
-      subtotal: (transaction.total_amount || 0) * 0.9, // Estimate subtotal (90% of total)
-      tax: (transaction.total_amount || 0) * 0.1, // Estimate tax (10% of total)
-      discount: 0,
+    const ordersWithCustomerInfo: OrderDetails[] = ordersArray.map((order: any) => ({
+      ...order,
+      id: order.id,
+      receiptNumber: order.id,
+      total: order.total || 0,
+      subtotal: order.subtotal || 0,
+      tax: order.tax || 0,
+      discount: order.discount || 0,
       items: [],
-      timestamp: new Date(transaction.timestamp || Date.now()),
-      customerName: `Customer ${transaction.user_id}`,
-      customerEmail: "",
+      timestamp: new Date(order.created_at || Date.now()),
+      customerName: order.customer_name || `Customer ${order.customer_id}`,
+      customerEmail: order.customer_email || '',
+      paymentMethod: order.payment_method || 'cash',
+      status: order.status || 'pending',
     }))
 
     setOrders(ordersWithCustomerInfo.reverse())
@@ -85,25 +86,41 @@ const loadOrders = async () => {
     }
 
     if (statusFilter !== "all") {
-      // For demo purposes, we'll assign random statuses
-      filtered = filtered.filter((_, index) => {
-        const statuses = ["completed", "pending", "processing"]
-        const status = statuses[index % statuses.length]
-        return status === statusFilter
-      })
+      // Filter by actual order status
+      filtered = filtered.filter((order) => order.status === statusFilter)
     }
 
     setFilteredOrders(filtered)
   }
 
-  const getOrderStatus = (index: number) => {
-    const statuses = ["completed", "pending", "processing", "completed", "completed"]
-    return statuses[index % statuses.length]
+  const getOrderStatus = (order: OrderDetails) => {
+    return order.status || 'pending'
   }
 
   const getStatusBadge = (status: string) => {
     const statusConfig = orderStatuses.find((s) => s.value === status)
     return statusConfig || orderStatuses[0]
+  }
+
+  const handleStatusChange = async (orderId: number, newStatus: string) => {
+    try {
+      console.log(`[v0] Updating order ${orderId} status to ${newStatus}`)
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update status')
+      }
+
+      // Reload orders to reflect the change
+      await loadOrders()
+      console.log('[v0] Order status updated successfully')
+    } catch (error) {
+      console.error('[v0] Error updating order status:', error)
+    }
   }
 
   const handleViewOrder = (order: OrderDetails) => {
@@ -166,7 +183,7 @@ const loadOrders = async () => {
               <RefreshCw className="h-4 w-4 text-yellow-500" />
               <span className="text-sm font-medium">Pending</span>
             </div>
-            <p className="text-2xl font-bold mt-1">{orders.filter((_, i) => getOrderStatus(i) === "pending").length}</p>
+            <p className="text-2xl font-bold mt-1">{orders.filter((order) => order.status === "pending").length}</p>
           </CardContent>
         </Card>
         <Card>
@@ -239,8 +256,8 @@ const loadOrders = async () => {
 
               {/* Table Body */}
               <div className="divide-y">
-                {filteredOrders.map((order, index) => {
-                  const status = getOrderStatus(index)
+                {filteredOrders.map((order) => {
+                  const status = getOrderStatus(order)
                   const statusConfig = getStatusBadge(status)
 
                   return (
@@ -266,7 +283,18 @@ const loadOrders = async () => {
                         )}
                       </div>
                       <div className="col-span-2">
-                        <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
+                        <Select value={status} onValueChange={(newStatus) => handleStatusChange(order.id, newStatus)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {orderStatuses.map((s) => (
+                              <SelectItem key={s.value} value={s.value}>
+                                {s.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="col-span-1">
                         <DropdownMenu>
@@ -342,9 +370,21 @@ const loadOrders = async () => {
                     </p>
                     <p>
                       <span className="font-medium">Status:</span>{" "}
-                      <Badge className={getStatusBadge(getOrderStatus(0)).color}>
-                        {getStatusBadge(getOrderStatus(0)).label}
-                      </Badge>
+                      <Select value={getOrderStatus(selectedOrder)} onValueChange={(newStatus) => {
+                        handleStatusChange(selectedOrder.id, newStatus)
+                        setShowOrderDetails(false)
+                      }}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {orderStatuses.map((s) => (
+                            <SelectItem key={s.value} value={s.value}>
+                              {s.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </p>
                   </div>
                 </div>
