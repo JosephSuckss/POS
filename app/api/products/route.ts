@@ -50,3 +50,39 @@ export async function GET() {
     )
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { name, price, description, image_url, category_id } = body
+
+    // Validate required fields
+    if (!name || price === undefined) {
+      return Response.json(
+        { error: 'Missing required fields: name and price' },
+        { status: 400 }
+      )
+    }
+
+    console.log('[v0] Creating product:', { name, price })
+
+    const result = await sql`
+      INSERT INTO products (name, price, description, image_url, category_id, created_at, updated_at)
+      VALUES (${name}, ${price}, ${description || null}, ${image_url || null}, ${category_id || null}, NOW(), NOW())
+      RETURNING id, name, CAST(price AS FLOAT) as price, description, image_url, category_id, created_at, updated_at
+    `
+
+    console.log('[v0] Product created successfully:', result[0])
+
+    return Response.json(result[0], { status: 201 })
+  } catch (error) {
+    console.error('[v0] Error creating product:', error)
+    return Response.json(
+      { 
+        error: 'Failed to create product',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, 
+      { status: 500 }
+    )
+  }
+}
