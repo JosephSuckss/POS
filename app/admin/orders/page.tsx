@@ -174,7 +174,7 @@ const loadOrders = async () => {
               <DollarSign className="h-4 w-4 text-green-500" />
               <span className="text-sm font-medium">Total Revenue</span>
             </div>
-            <p className="text-2xl font-bold mt-1">${orders.reduce((sum, order) => sum + order.total, 0).toFixed(2)}</p>
+            <p className="text-2xl font-bold mt-1">${(orders.reduce((sum, order) => sum + (Number(order.total) || 0), 0)).toFixed(2)}</p>
           </CardContent>
         </Card>
         <Card>
