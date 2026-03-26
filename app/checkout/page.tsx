@@ -1,27 +1,52 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CreditCard, Wallet } from "lucide-react"
+import { ArrowLeft, CreditCard, Wallet, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { useCart } from "../context/cart-context"
+import { useTable } from "../context/table-context"
 
 export default function CheckoutPage() {
   const router = useRouter()
   const { cart, cartTotal, clearCart, customer, discountAmount } = useCart()
-  const [paymentMethod, setPaymentMethod] = useState("card")
+  const { currentTableId, markTableAvailable } = useTable()
+  const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [isHydrated, setIsHydrated] = useState(false)
+  
+  console.log('Checkout page render - cart length:', cart.length, 'customer:', customer?.name)
+  
+  // Wait for cart to be populated before rendering checkout
+  useEffect(() => {
+    // If cart is already populated, show immediately
+    if (cart.length > 0) {
+      console.log('Cart already populated, showing checkout')
+      setIsHydrated(true)
+      return
+    }
+    
+    // Otherwise wait up to 500ms for cart to load
+    const timer = setTimeout(() => {
+      console.log('Hydration timeout - cart length:', cart.length)
+      setIsHydrated(true)
+    }, 500)
+    
+    return () => clearTimeout(timer)
+  }, [])
 
   const tax = cartTotal * 0.1
   const grandTotal = cartTotal - discountAmount + tax
 
   const handlePayment = async () => {
     try {
+      console.log('Starting checkout with cart:', cart.length, 'items, customer:', customer?.name, 'discount:', discountAmount)
+
       const transaction = {
-        customerId: customer?.id,
+        customerId: customer?.id || null,
         items: cart.map((item) => ({
           id: item.id,
           name: item.name,
@@ -36,6 +61,8 @@ export default function CheckoutPage() {
         paymentMethod: paymentMethod,
       }
 
+      console.log('Sending transaction to API:', transaction)
+
       // Save transaction via API
       const response = await fetch('/api/checkout', {
         method: 'POST',
@@ -44,107 +71,50 @@ export default function CheckoutPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to process payment')
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to process payment')
       }
 
-      // Clear cart and redirect
+      const result = await response.json()
+      console.log('Payment successful, order ID:', result.orderId)
+      
+      // Build success URL with order info - BEFORE clearing cart
+      const successParams = new URLSearchParams({
+        orderId: result.orderId.toString(),
+        total: grandTotal.toFixed(2),
+        subtotal: cartTotal.toFixed(2),
+        tax: tax.toFixed(2),
+        discount: discountAmount.toFixed(2),
+        paymentMethod: paymentMethod,
+        items: JSON.stringify(cart.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity
+        })))
+      })
+      
+      const successUrl = `/success?${successParams.toString()}`
+      console.log('Redirecting to success page:', successUrl)
+      
+      // Mark table as available after successful checkout
+      if (currentTableId) {
+        try {
+          await markTableAvailable(currentTableId)
+          console.log('Table marked as available')
+        } catch (error) {
+          console.error('Failed to mark table as available:', error)
+          // Don't block the checkout flow on this error
+        }
+      }
+      
+      // Clear cart first
       clearCart()
-      router.push("/success")
+      
+      // Then redirect immediately using router.push (faster than window.location)
+      router.push(successUrl)
     } catch (error) {
-      console.error('[v0] Checkout error:', error)
+      console.error('Checkout error:', error)
       alert('Failed to process payment. Please try again.')
     }
   }
-
-  if (cart.length === 0) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Your cart is empty</h1>
-          <p className="mt-2 text-muted-foreground">Add some items to your cart before checkout</p>
-          <Button className="mt-4" onClick={() => router.push("/")}>
-            Return to POS
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="container mx-auto max-w-4xl py-8">
-      <Button variant="ghost" className="mb-6" onClick={() => router.push("/")}>
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to POS
-      </Button>
-
-      <h1 className="mb-6 text-3xl font-bold">Checkout</h1>
-
-      <div className="grid gap-8 md:grid-cols-2">
-        <div>
-          <h2 className="mb-4 text-xl font-semibold">Order Summary</h2>
-          <div className="rounded-lg border p-4 bg-white">
-            {cart.map((item) => (
-              <div key={item.id} className="mb-3 flex justify-between">
-                <div>
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    ${item.price.toFixed(2)} × {item.quantity}
-                  </p>
-                </div>
-                <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
-              </div>
-            ))}
-
-            <Separator className="my-4" />
-
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <p>Subtotal</p>
-                <p>${cartTotal.toFixed(2)}</p>
-              </div>
-              <div className="flex justify-between">
-                <p>Tax (10%)</p>
-                <p>${tax.toFixed(2)}</p>
-              </div>
-              <div className="flex justify-between">
-                <p>Discount</p>
-                <p>-${discountAmount.toFixed(2)}</p>
-              </div>
-              <div className="flex justify-between font-bold">
-                <p>Total</p>
-                <p>${grandTotal.toFixed(2)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <h2 className="mb-4 text-xl font-semibold">Payment Method</h2>
-          <div className="rounded-lg border p-4 bg-white">
-            <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
-              <div className="flex items-center space-x-2 rounded-md border p-3">
-                <RadioGroupItem value="card" id="card" />
-                <Label htmlFor="card" className="flex items-center">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Credit/Debit Card
-                </Label>
-              </div>
-
-              <div className="mt-3 flex items-center space-x-2 rounded-md border p-3">
-                <RadioGroupItem value="cash" id="cash" />
-                <Label htmlFor="cash" className="flex items-center">
-                  <Wallet className="mr-2 h-4 w-4" />
-                  Cash
-                </Label>
-              </div>
-            </RadioGroup>
-
-            <Button className="mt-6 w-full" size="lg" onClick={handlePayment}>
-              Complete Payment
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}

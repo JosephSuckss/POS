@@ -1,11 +1,12 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Minus, Plus, ShoppingCart, Trash2, User, Tag, AlertCircle } from "lucide-react"
-import { useState } from "react"
+import { Minus, Plus, ShoppingCart, Trash2, User, Tag, LogOut, AlertCircle } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { IMAGE_PLACEHOLDER } from "@/lib/image-placeholder"
 import { useCart } from "../context/cart-context"
 import { useTable } from "../context/table-context"
 import CustomerModal from "./customer-modal"
@@ -15,37 +16,95 @@ export default function CartSidebar() {
   const router = useRouter()
   const { cart, removeFromCart, updateQuantity, cartTotal, itemCount, customer, appliedDiscount, discountAmount } =
     useCart()
-  const { currentTableId, tables } = useTable()
+  const { currentTableId, tables, markTableOccupied, tableStatusPending } = useTable()
   const [showCustomerModal, setShowCustomerModal] = useState(false)
   const [showDiscountModal, setShowDiscountModal] = useState(false)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [tableOccupiedStatus, setTableOccupiedStatus] = useState<Set<number>>(new Set())
+  const prevCartLengthRef = useRef(0)
 
   const selectedTable = tables.find((t) => t.id === currentTableId)
+
+  // Track when first item is added and mark table as occupied
+  useEffect(() => {
+    if (!currentTableId) {
+      prevCartLengthRef.current = 0
+      setTableOccupiedStatus(new Set())
+      return
+    }
+
+    const wasEmpty = prevCartLengthRef.current === 0
+    const isNowEmpty = cart.length === 0
+    const hasItems = cart.length > 0
+
+    // First item added to cart
+    if (wasEmpty && hasItems && !tableOccupiedStatus.has(currentTableId)) {
+      prevCartLengthRef.current = cart.length
+      
+      markTableOccupied(currentTableId).catch((error) => {
+        console.error("Failed to mark table as occupied:", error)
+      })
+
+      setTableOccupiedStatus((prev) => new Set(prev).add(currentTableId))
+    } else if (isNowEmpty && tableOccupiedStatus.has(currentTableId)) {
+      // Cart emptied, reset the flag
+      setTableOccupiedStatus((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(currentTableId)
+        return newSet
+      })
+      prevCartLengthRef.current = 0
+    } else {
+      prevCartLengthRef.current = cart.length
+    }
+  }, [cart.length, currentTableId, tableOccupiedStatus, markTableOccupied])
 
   const handleCheckout = () => {
     router.push("/checkout")
   }
 
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      })
+    } catch (error) {
+      console.error("[auth] Logout failed:", error)
+    } finally {
+      router.push("/")
+      router.refresh()
+      setIsLoggingOut(false)
+    }
+  }
+
   return (
-    <div className="flex w-80 flex-col border-l bg-background">
-      <div className="flex items-center justify-between border-b p-4">
+    <div className="flex h-full flex-col bg-background">
+      <div className="flex items-center border-b px-4 py-3.5">
         <h2 className="flex items-center text-lg font-semibold">
           <ShoppingCart className="mr-2 h-5 w-5" />
-          Cart
+          <span>Cart</span>
+          <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+            {itemCount}
+          </span>
         </h2>
-        <span className="rounded-full bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">
-          {itemCount} items
-        </span>
       </div>
 
       {selectedTable && (
-        <div className="border-b bg-blue-50 dark:bg-blue-950 p-3">
+        <div className={`border-b p-3 ${
+          tableStatusPending.has(selectedTable.id)
+            ? "bg-blue-100 dark:bg-blue-900 animate-pulse"
+            : "bg-blue-50 dark:bg-blue-950"
+        }`}>
           <p className="text-xs font-medium text-blue-900 dark:text-blue-100">
             📍 Table {selectedTable.table_number} ({selectedTable.capacity} seats)
+            {selectedTable.status === "occupied" && <span className="ml-2">🔴 Occupied</span>}
           </p>
         </div>
       )}
 
-      {/* Customer Section */}
       <div className="border-b p-4">
         <Button
           variant="outline"
@@ -57,7 +116,6 @@ export default function CartSidebar() {
         </Button>
       </div>
 
-      {/* Discount Section */}
       <div className="border-b p-4">
         <Button
           variant="outline"
@@ -81,11 +139,19 @@ export default function CartSidebar() {
             {cart.map((item) => (
               <div key={item.id} className="flex gap-3">
                 <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border">
-                  <img src={item.image || "/placeholder.svg"} alt={item.name} className="h-full w-full object-cover" />
+                  <img
+                    src={item.image || IMAGE_PLACEHOLDER}
+                    alt={item.name}
+                    className="h-full w-full object-cover"
+                    onError={(event) => {
+                      event.currentTarget.onerror = null
+                      event.currentTarget.src = IMAGE_PLACEHOLDER
+                    }}
+                  />
                 </div>
                 <div className="flex flex-1 flex-col">
                   <div className="flex justify-between">
-                    <h3 className="font-medium line-clamp-1">{item.name}</h3>
+                    <h3 className="line-clamp-1 font-medium">{item.name}</h3>
                     <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
                   </div>
                   <p className="text-sm text-muted-foreground">${item.price.toFixed(2)} each</p>
@@ -125,8 +191,8 @@ export default function CartSidebar() {
         )}
       </div>
 
-      <div className="border-t p-4 space-y-3">
-        <div className="space-y-2">
+      <div className="space-y-2 border-t p-4">
+        <div className="mb-4 space-y-2">
           <div className="flex justify-between">
             <p>Subtotal</p>
             <p>${cartTotal.toFixed(2)}</p>
@@ -143,15 +209,24 @@ export default function CartSidebar() {
           </div>
         </div>
         {cart.length > 0 && !selectedTable && (
-          <Alert className="border-yellow-300 bg-yellow-50 dark:bg-yellow-950">
+          <Alert className="mb-2 border-yellow-300 bg-yellow-50 dark:bg-yellow-950">
             <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
             <AlertDescription className="text-xs text-yellow-800 dark:text-yellow-200">
               Please select a table to proceed with checkout
             </AlertDescription>
           </Alert>
         )}
-        <Button className="w-full" size="lg" disabled={cart.length === 0 || !selectedTable} onClick={handleCheckout}>
+        <Button
+          className="w-full"
+          size="lg"
+          disabled={cart.length === 0 || !selectedTable}
+          onClick={handleCheckout}
+        >
           Checkout
+        </Button>
+        <Button variant="outline" className="w-full" onClick={handleLogout} disabled={isLoggingOut}>
+          <LogOut className="mr-2 h-4 w-4" />
+          {isLoggingOut ? "Logging out..." : "Logout"}
         </Button>
       </div>
       <CustomerModal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} />
