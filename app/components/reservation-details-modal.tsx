@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle, Clock, Calendar, User, Phone, MessageSquare, Loader2 } from "lucide-react"
+import { AlertCircle, Clock, User, Phone, MessageSquare, Loader2 } from "lucide-react"
 import { useTable } from "@/app/context/table-context"
 
 interface ReservationDetailsModalProps {
@@ -28,7 +28,6 @@ export default function ReservationDetailsModal({ isOpen, onClose, table }: Rese
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Update countdown timer every second
   useEffect(() => {
     if (!table?.reserved_to) return
 
@@ -96,15 +95,12 @@ export default function ReservationDetailsModal({ isOpen, onClose, table }: Rese
         )}
 
         <div className="space-y-6">
-          {/* Time Remaining */}
           {table?.reserved_to && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/30">
               <div className="flex items-center gap-3">
                 <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                    Time Remaining
-                  </div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Time Remaining</div>
                   <div className="text-2xl font-bold text-amber-900 dark:text-amber-100">{countdown || "Calculating..."}</div>
                 </div>
               </div>
@@ -114,7 +110,6 @@ export default function ReservationDetailsModal({ isOpen, onClose, table }: Rese
             </div>
           )}
 
-          {/* Customer Information */}
           <div className="space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300">Customer Information</h3>
 
@@ -155,7 +150,6 @@ export default function ReservationDetailsModal({ isOpen, onClose, table }: Rese
             )}
           </div>
 
-          {/* Reservation Timeline */}
           <div className="space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300">Reservation Timeline</h3>
 
@@ -163,47 +157,35 @@ export default function ReservationDetailsModal({ isOpen, onClose, table }: Rese
               {table?.reserved_from && (
                 <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/30">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">From</span>
-                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {formatDateTime(table.reserved_from)}
-                  </span>
+                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{formatDateTime(table.reserved_from)}</span>
                 </div>
               )}
 
               {table?.reserved_to && (
                 <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/30">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Until</span>
-                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {formatDateTime(table.reserved_to)}
-                  </span>
+                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{formatDateTime(table.reserved_to)}</span>
                 </div>
               )}
 
               {table?.reserved_from && table?.reserved_to && (
                 <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/30">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Duration</span>
-                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {calculateDuration(table.reserved_from, table.reserved_to)}
-                  </span>
+                  <span className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{calculateDuration(table.reserved_from, table.reserved_to)}</span>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="flex gap-2 pt-4">
-            <Button
-              onClick={handleCancel}
-              disabled={isSubmitting || isPending}
-              variant="destructive"
-              className="flex-1"
-            >
+            <Button onClick={handleCancel} disabled={isSubmitting || isPending} variant="destructive" className="flex-1">
               {isSubmitting || isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Canceling...
                 </>
               ) : (
-                "✗ Cancel Reservation"
+                "✕ Cancel Reservation"
               )}
             </Button>
             <Button onClick={onClose} variant="outline" className="flex-1">
@@ -211,7 +193,6 @@ export default function ReservationDetailsModal({ isOpen, onClose, table }: Rese
             </Button>
           </div>
 
-          {/* Info Message */}
           <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
             💡 <strong>Note:</strong> This reservation will automatically expire at the scheduled time and the table will become available.
           </div>
