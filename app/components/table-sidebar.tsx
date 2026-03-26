@@ -87,7 +87,7 @@ export default function TableSidebar() {
         </div>
 
         {/* Mobile */}
-        <div className="md:hidden">
+        <div className="md:hidden px-3">
           <Button
             onClick={() => setShowMobileSheet(true)}
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -123,7 +123,7 @@ export default function TableSidebar() {
       </div>
 
       {/* Mobile Version - Button + Sheet */}
-      <div className="md:hidden">
+      <div className="md:hidden px-3">
         <Button
           onClick={() => setShowMobileSheet(true)}
           className={`w-full ${
