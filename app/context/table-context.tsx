@@ -66,6 +66,8 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json()
         setTables(data)
+      } else if (response.status !== 404) {
+        console.error("Failed to fetch tables:", response.status)
       }
     } catch (error) {
       console.error("Failed to fetch tables:", error)
