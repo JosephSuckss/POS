@@ -53,7 +53,7 @@ export async function PUT(
     const { status, current_order_id } = body
 
     // Validate status
-    if (!["available", "occupied", "reserved"].includes(status)) {
+    if (!status || !["available", "occupied", "reserved"].includes(status)) {
       return Response.json(
         { error: "Invalid status" },
         { status: 400 }
