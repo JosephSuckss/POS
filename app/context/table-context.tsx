@@ -12,6 +12,20 @@ export interface Table {
   updated_at: string
   reserved_from: string | null
   reserved_to: string | null
+  reserved_by_staff_id?: number
+  reserved_for_customer_name?: string
+  reserved_for_customer_phone?: string
+  reserved_notes?: string
+  reserved_at?: string
+}
+
+export interface ReservationDetails {
+  type: "simple" | "timed"
+  from?: Date
+  to?: Date
+  customerName?: string
+  customerPhone?: string
+  notes?: string
 }
 
 interface TableContextType {
@@ -29,6 +43,9 @@ interface TableContextType {
   ) => Promise<void>
   markTableOccupied: (tableId: number, orderId?: number) => Promise<void>
   markTableAvailable: (tableId: number) => Promise<void>
+  reserveTable: (tableId: number, reservationDetails: ReservationDetails) => Promise<void>
+  unreserveTable: (tableId: number) => Promise<void>
+  extendReservation: (tableId: number, newEndTime: Date) => Promise<void>
 }
 
 const TableContext = createContext<TableContextType | undefined>(undefined)
@@ -63,6 +80,34 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(() => {
       fetchTables()
     }, 10000)
+
+    return () => clearInterval(interval)
+  }, [isHydrated])
+
+  // Auto-release expired reservations every 2 minutes
+  useEffect(() => {
+    if (!isHydrated) return
+
+    const interval = setInterval(() => {
+      setTables((prev) =>
+        prev.map((table) => {
+          if (table.status === "reserved" && table.reserved_to) {
+            const endTime = new Date(table.reserved_to)
+            if (endTime < new Date()) {
+              // Auto-release expired reservation
+              console.log(`Auto-releasing expired reservation for Table ${table.table_number}`)
+              return {
+                ...table,
+                status: "available",
+                reserved_from: null,
+                reserved_to: null,
+              }
+            }
+          }
+          return table
+        })
+      )
+    }, 120000) // Check every 2 minutes
 
     return () => clearInterval(interval)
   }, [isHydrated])
@@ -155,6 +200,155 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     await updateTableStatus(tableId, "available")
   }
 
+  const reserveTable = async (tableId: number, reservationDetails: ReservationDetails) => {
+    setTableStatusPending((prev) => new Set(prev).add(tableId))
+
+    try {
+      // Optimistic update
+      setTables((prev) =>
+        prev.map((table) =>
+          table.id === tableId
+            ? {
+                ...table,
+                status: "reserved",
+                reserved_from: reservationDetails.from?.toISOString() || null,
+                reserved_to: reservationDetails.to?.toISOString() || null,
+              }
+            : table
+        )
+      )
+
+      const response = await fetch(`/api/tables/${tableId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "reserve",
+          type: reservationDetails.type,
+          from: reservationDetails.from?.toISOString(),
+          to: reservationDetails.to?.toISOString(),
+          customerName: reservationDetails.customerName,
+          customerPhone: reservationDetails.customerPhone,
+          notes: reservationDetails.notes,
+        }),
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        console.error(`Failed to reserve table ${tableId}:`, response.status)
+        await fetchTables()
+        throw new Error(`Failed to reserve table: ${response.status}`)
+      }
+
+      const updatedTable = await response.json()
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updatedTable : table))
+      )
+    } catch (error) {
+      console.error(`Error reserving table ${tableId}:`, error)
+      await fetchTables()
+      throw error
+    } finally {
+      setTableStatusPending((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(tableId)
+        return newSet
+      })
+    }
+  }
+
+  const unreserveTable = async (tableId: number) => {
+    setTableStatusPending((prev) => new Set(prev).add(tableId))
+
+    try {
+      // Optimistic update
+      setTables((prev) =>
+        prev.map((table) =>
+          table.id === tableId
+            ? {
+                ...table,
+                status: "available",
+                reserved_from: null,
+                reserved_to: null,
+              }
+            : table
+        )
+      )
+
+      const response = await fetch(`/api/tables/${tableId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "unreserve",
+        }),
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        console.error(`Failed to unreserve table ${tableId}:`, response.status)
+        await fetchTables()
+        throw new Error(`Failed to unreserve table: ${response.status}`)
+      }
+
+      const updatedTable = await response.json()
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updatedTable : table))
+      )
+    } catch (error) {
+      console.error(`Error unreserving table ${tableId}:`, error)
+      await fetchTables()
+      throw error
+    } finally {
+      setTableStatusPending((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(tableId)
+        return newSet
+      })
+    }
+  }
+
+  const extendReservation = async (tableId: number, newEndTime: Date) => {
+    setTableStatusPending((prev) => new Set(prev).add(tableId))
+
+    try {
+      const response = await fetch(`/api/tables/${tableId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "extend",
+          to: newEndTime.toISOString(),
+        }),
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        console.error(`Failed to extend reservation for table ${tableId}:`, response.status)
+        await fetchTables()
+        throw new Error(`Failed to extend reservation: ${response.status}`)
+      }
+
+      const updatedTable = await response.json()
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updatedTable : table))
+      )
+    } catch (error) {
+      console.error(`Error extending reservation for table ${tableId}:`, error)
+      await fetchTables()
+      throw error
+    } finally {
+      setTableStatusPending((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(tableId)
+        return newSet
+      })
+    }
+  }
+
   const selectTable = (tableId: number) => {
     setCurrentTableId(tableId)
     localStorage.setItem("selectedTableId", tableId.toString())
@@ -178,6 +372,9 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         updateTableStatus,
         markTableOccupied,
         markTableAvailable,
+        reserveTable,
+        unreserveTable,
+        extendReservation,
       }}
     >
       {children}
