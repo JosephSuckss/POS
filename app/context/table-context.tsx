@@ -18,9 +18,17 @@ interface TableContextType {
   currentTableId: number | null
   tables: Table[]
   loading: boolean
+  tableStatusPending: Set<number>
   selectTable: (tableId: number) => void
   deselectTable: () => void
   fetchTables: () => Promise<void>
+  updateTableStatus: (
+    tableId: number,
+    status: "available" | "occupied" | "reserved",
+    orderId?: number
+  ) => Promise<void>
+  markTableOccupied: (tableId: number, orderId?: number) => Promise<void>
+  markTableAvailable: (tableId: number) => Promise<void>
 }
 
 const TableContext = createContext<TableContextType | undefined>(undefined)
@@ -30,6 +38,7 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
   const [tables, setTables] = useState<Table[]>([])
   const [loading, setLoading] = useState(true)
   const [isHydrated, setIsHydrated] = useState(false)
+  const [tableStatusPending, setTableStatusPending] = useState<Set<number>>(new Set())
 
   // Load selected table from localStorage on mount
   useEffect(() => {
@@ -76,6 +85,76 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const updateTableStatus = async (
+    tableId: number,
+    status: "available" | "occupied" | "reserved",
+    orderId?: number
+  ) => {
+    // Mark as pending to show loading state
+    setTableStatusPending((prev) => new Set(prev).add(tableId))
+
+    try {
+      // Optimistic update - update UI immediately
+      setTables((prev) =>
+        prev.map((table) =>
+          table.id === tableId
+            ? {
+                ...table,
+                status,
+                current_order_id: orderId || null,
+              }
+            : table
+        )
+      )
+
+      // Persist to backend
+      const response = await fetch(`/api/tables/${tableId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status,
+          current_order_id: orderId || null,
+        }),
+        credentials: "include",
+      })
+
+      if (!response.ok) {
+        console.error(`Failed to update table ${tableId} status:`, response.status)
+        // Revert optimistic update on error
+        await fetchTables()
+        throw new Error(`Failed to update table status: ${response.status}`)
+      }
+
+      const updatedTable = await response.json()
+      // Update with server response to ensure consistency
+      setTables((prev) =>
+        prev.map((table) => (table.id === tableId ? updatedTable : table))
+      )
+    } catch (error) {
+      console.error(`Error updating table ${tableId} status:`, error)
+      // Revert optimistic update
+      await fetchTables()
+      throw error
+    } finally {
+      // Mark as no longer pending
+      setTableStatusPending((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(tableId)
+        return newSet
+      })
+    }
+  }
+
+  const markTableOccupied = async (tableId: number, orderId?: number) => {
+    await updateTableStatus(tableId, "occupied", orderId)
+  }
+
+  const markTableAvailable = async (tableId: number) => {
+    await updateTableStatus(tableId, "available")
+  }
+
   const selectTable = (tableId: number) => {
     setCurrentTableId(tableId)
     localStorage.setItem("selectedTableId", tableId.toString())
@@ -92,9 +171,13 @@ export function TableProvider({ children }: { children: React.ReactNode }) {
         currentTableId,
         tables,
         loading,
+        tableStatusPending,
         selectTable,
         deselectTable,
         fetchTables,
+        updateTableStatus,
+        markTableOccupied,
+        markTableAvailable,
       }}
     >
       {children}
