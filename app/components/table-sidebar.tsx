@@ -6,6 +6,7 @@ import { useState, useEffect } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import ReserveTableModal from "./reserve-table-modal"
+import ReservationDetailsModal from "./reservation-details-modal"
 import { Clock, X } from "lucide-react"
 
 export default function TableSidebar() {
@@ -14,6 +15,8 @@ export default function TableSidebar() {
   const [contextMenu, setContextMenu] = useState<{ tableId: number; x: number; y: number } | null>(null)
   const [reserveModalOpen, setReserveModalOpen] = useState(false)
   const [selectedTableForReserve, setSelectedTableForReserve] = useState<{ id: number; name: string } | null>(null)
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false)
+  const [selectedTableForDetails, setSelectedTableForDetails] = useState<number | null>(null)
   const [countdowns, setCountdowns] = useState<Record<number, string>>({})
 
   // Update countdown timers every second
@@ -84,6 +87,9 @@ export default function TableSidebar() {
                 } else {
                   selectTable(table.id)
                 }
+              } else if (table.status === "reserved") {
+                setSelectedTableForDetails(table.id)
+                setDetailsModalOpen(true)
               }
               setShowMobileSheet(false)
             }}
@@ -173,6 +179,16 @@ export default function TableSidebar() {
 
               {table.status === "reserved" && (
                 <>
+                  <button
+                    onClick={() => {
+                      setSelectedTableForDetails(table.id)
+                      setDetailsModalOpen(true)
+                      setContextMenu(null)
+                    }}
+                    className="block w-full text-left px-4 py-2 text-sm font-medium hover:bg-purple-50 dark:hover:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-b border-gray-200 dark:border-gray-700"
+                  >
+                    View Details
+                  </button>
                   <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                     <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">
                       Reserved{table.reserved_for_customer_name ? ` by ${table.reserved_for_customer_name}` : ""}
@@ -300,6 +316,9 @@ export default function TableSidebar() {
                           } else {
                             selectTable(table.id)
                           }
+                        } else if (table.status === "reserved") {
+                          setSelectedTableForDetails(table.id)
+                          setDetailsModalOpen(true)
                         }
                         setShowMobileSheet(false)
                       }}
@@ -396,6 +415,18 @@ export default function TableSidebar() {
           }}
           tableId={selectedTableForReserve.id}
           tableName={selectedTableForReserve.name}
+        />
+      )}
+
+      {/* Reservation Details Modal */}
+      {selectedTableForDetails && (
+        <ReservationDetailsModal
+          isOpen={detailsModalOpen}
+          onClose={() => {
+            setDetailsModalOpen(false)
+            setSelectedTableForDetails(null)
+          }}
+          table={tables.find((t) => t.id === selectedTableForDetails)}
         />
       )}
     </>
